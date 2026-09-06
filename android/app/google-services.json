@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "527226819921",
+    "project_id": "slaytionary-mcommerce",
+    "storage_bucket": "slaytionary-mcommerce.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:527226819921:android:239dc816d93fc2d26baf70",
+        "android_client_info": {
+          "package_name": "com.example.slaytionary_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAdV96fd-XqAJ59zDdgKNN97Pj0lw-b3NI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
