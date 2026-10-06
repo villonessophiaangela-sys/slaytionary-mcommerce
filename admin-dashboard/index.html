@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Slaytionary Admin Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+
+<div id="loginBox">
+    <h2>Admin Login</h2>
+    <input id="loginEmail" placeholder="Email">
+    <input id="loginPassword" type="password" placeholder="Password">
+    <button onclick="adminLogin()">Login</button>
+    <p id="loginError" class="error"></p>
+</div>
+
+<div id="dashboard" style="display:none;">
+    <div class="sidebar">
+        <h3>Slaytionary</h3>
+        <button onclick="showSection('products')">Product Management</button>
+        <button onclick="showSection('orders')">Orders</button>
+        <button onclick="showSection('users')">Users</button>
+        <button onclick="logout()">Logout</button>
+    </div>
+
+    <div class="main">
+        <section id="products" class="section active">
+            <h2>Product Management</h2>
+            <form onsubmit="saveProduct(event)">
+                <input type="hidden" id="editingId" value="">
+                <input id="pName" placeholder="Product Name" required>
+                <input id="pDesc" placeholder="Description">
+                <input id="pPrice" type="number" step="0.01" placeholder="Price" required>
+                <input id="pStock" type="number" placeholder="Stock" required>
+                <input id="pImage" placeholder="Image URL">
+                <button type="submit" id="formSubmitBtn">Add Product</button>
+                <button type="button" id="cancelEditBtn" onclick="cancelEdit()" style="display:none;">Cancel</button>
+            </form>
+            <table>
+                <thead><tr><th>Name</th><th>Price</th><th>Stock</th><th>Action</th></tr></thead>
+                <tbody id="productTable"></tbody>
+            </table>
+        </section>
+
+        <section id="orders" class="section">
+            <h2>Orders</h2>
+            <table>
+                <thead><tr><th>Customer Name</th><th>Products Ordered</th><th>Total Amount</th><th>Status</th></tr></thead>
+                <tbody id="orderTable"></tbody>
+            </table>
+        </section>
+
+        <section id="users" class="section">
+            <h2>Users</h2>
+            <table>
+                <thead><tr><th>Name</th><th>Email</th><th>Role</th></tr></thead>
+                <tbody id="userTable"></tbody>
+            </table>
+        </section>
+    </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
