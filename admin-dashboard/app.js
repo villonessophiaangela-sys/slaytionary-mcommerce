@@ -14,15 +14,38 @@ const db = firebase.firestore();
 function adminLogin() {
   const email = document.getElementById('loginEmail').value;
   const password = document.getElementById('loginPassword').value;
+
   auth.signInWithEmailAndPassword(email, password)
-    .then(() => {
+    .then(async (cred) => {
+
+      const userDoc = await db
+        .collection('users')
+        .doc(cred.user.uid)
+        .get();
+
+      if (!userDoc.exists) {
+        throw new Error("User record not found");
+      }
+
+      const userData = userDoc.data();
+
+      if (userData.role !== "admin") {
+        await auth.signOut();
+        document.getElementById('loginError').innerText =
+          "Access denied. Admin account only.";
+        return;
+      }
+
       document.getElementById('loginBox').style.display = 'none';
       document.getElementById('dashboard').style.display = 'flex';
+
       loadProducts();
       loadOrders();
       loadUsers();
     })
-    .catch(err => document.getElementById('loginError').innerText = err.message);
+    .catch(err => {
+      document.getElementById('loginError').innerText = err.message;
+    });
 }
 
 function logout() {
