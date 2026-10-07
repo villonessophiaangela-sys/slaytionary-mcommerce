@@ -34,7 +34,6 @@ function adminLogin() {
       document.getElementById('adminNameLabel').innerText = userData.name || email;
       document.getElementById('loginBox').style.display = 'none';
       document.getElementById('dashboard').style.display = 'flex';
-
       loadProducts();
       loadOrders();
       loadUsers();
