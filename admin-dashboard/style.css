@@ -1,23 +1,51 @@
-body { font-family: Arial, sans-serif; margin: 0; background: #f4f5f7; }
-#loginBox { max-width: 320px; margin: 100px auto; background: white; padding: 24px; border-radius: 8px; }
-#loginBox input { display: block; width: 100%; margin-bottom: 10px; padding: 8px; box-sizing: border-box; }
-#loginBox button { background: #3f3fae; color: white; padding: 10px 16px; border: none; border-radius: 4px; cursor: pointer; }
-.error { color: red; }
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; background: linear-gradient(135deg, #8E7CF0, #E88AC7, #FFC98B); min-height: 100vh; }
+
+#loginBox { max-width: 360px; margin: 90px auto; background: white; padding: 36px; border-radius: 20px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+#loginBox .logo { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; margin-bottom: 8px; }
+#loginBox h2 { font-family: 'Brush Script MT', cursive; font-size: 32px; color: #8E7CF0; margin: 4px 0; }
+#loginBox .subtitle { color: #888; margin-bottom: 20px; font-size: 13px; letter-spacing: 1px; }
+#loginBox input { display: block; width: 100%; margin-bottom: 12px; padding: 12px; border: 1px solid #ddd; border-radius: 10px; }
+#loginBox button { width: 100%; background: #8E7CF0; color: white; padding: 12px; border: none; border-radius: 10px; cursor: pointer; font-size: 15px; }
+#loginBox button:hover { background: #7a69dd; }
+.error { color: #e03131; margin-top: 10px; font-size: 13px; }
 
 #dashboard { display: flex; min-height: 100vh; }
-.sidebar { width: 220px; background: #3f3fae; color: white; padding: 20px; }
-.sidebar button { display: block; width: 100%; text-align: left; background: none; border: none; color: white; padding: 10px; margin-bottom: 6px; cursor: pointer; border-radius: 4px; }
-.sidebar button:hover { background: rgba(255,255,255,0.15); }
+.sidebar { width: 240px; background: #8E7CF0; color: white; padding: 24px; display: flex; flex-direction: column; }
+.sidebar-logo { width: 60px; height: 60px; border-radius: 50%; object-fit: cover; margin: 0 auto 10px; display: block; }
+.sidebar h3 { text-align: center; margin: 0 0 24px; font-family: 'Brush Script MT', cursive; font-size: 26px; }
+.sidebar button { display: block; width: 100%; text-align: left; background: rgba(255,255,255,0.12); border: none; color: white; padding: 14px 16px; margin-bottom: 10px; cursor: pointer; border-radius: 10px; font-size: 15px; }
+.sidebar button:hover { background: rgba(255,255,255,0.25); }
+.who-logged-in { margin-top: auto; font-size: 12px; opacity: 0.85; text-align: center; padding-top: 20px; }
+.who-logged-in span { font-weight: bold; font-size: 14px; }
 
-.main { flex: 1; padding: 24px; }
+.main { flex: 1; padding: 30px; background: #F7F5FC; }
 .section { display: none; }
 .section.active { display: block; }
+.main h2 { color: #8E7CF0; margin-bottom: 18px; }
 
-form { background: white; padding: 16px; margin-bottom: 20px; border-radius: 6px; max-width: 400px; }
-form input { display: block; width: 100%; margin-bottom: 10px; padding: 8px; box-sizing: border-box; }
-form button { background: #3f3fae; color: white; padding: 10px 16px; border: none; border-radius: 4px; cursor: pointer; }
+form { background: white; padding: 20px; margin-bottom: 24px; border-radius: 16px; max-width: 420px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+form input { display: block; width: 100%; margin-bottom: 10px; padding: 10px; border: 1px solid #ddd; border-radius: 8px; }
+form button { background: #8E7CF0; color: white; padding: 10px 18px; border: none; border-radius: 8px; cursor: pointer; margin-right: 8px; }
+form button:hover { background: #7a69dd; }
 
-table { width: 100%; border-collapse: collapse; background: white; }
-th, td { padding: 10px; border-bottom: 1px solid #eee; text-align: left; }
-.status-select { padding: 4px; }
-.delete-btn { color: #c00; background: none; border: none; cursor: pointer; }
+.filters { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+.filters input, .filters select { padding: 10px; border: 1px solid #ddd; border-radius: 8px; }
+#userSearch { padding: 10px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 14px; width: 300px; max-width: 100%; }
+
+table { width: 100%; border-collapse: collapse; background: white; border-radius: 14px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+th { background: #8E7CF0; color: white; padding: 12px; text-align: left; }
+td { padding: 10px 12px; border-bottom: 1px solid #f0eefa; }
+.prod-thumb { width: 44px; height: 44px; border-radius: 8px; object-fit: contain; background: #F7F5FC; padding: 2px; }
+.status-select { padding: 6px; border-radius: 6px; border: 1px solid #ddd; }
+.role-select { padding: 6px; border-radius: 6px; border: 1px solid #ddd; }
+.delete-btn { color: #e03131; background: none; border: none; cursor: pointer; }
+td button { background: #8E7CF0; color: white; border: none; padding: 6px 10px; border-radius: 6px; cursor: pointer; margin-right: 4px; }
+
+.modal { display: none; position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.4); align-items: center; justify-content: center; }
+.modal.show { display: flex; }
+.modal-box { background: white; padding: 26px; border-radius: 16px; text-align: center; max-width: 300px; }
+.modal-actions { display: flex; gap: 10px; margin-top: 16px; }
+.modal-actions button { flex: 1; padding: 10px; border: none; border-radius: 8px; cursor: pointer; }
+.cancel-btn { background: #eee; }
+.confirm-btn { background: #8E7CF0; color: white; }
