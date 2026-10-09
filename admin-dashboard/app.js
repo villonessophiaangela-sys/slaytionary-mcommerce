@@ -12,11 +12,16 @@ const db = firebase.firestore();
 
 let allOrders = [];
 let allUsers = [];
+let allProducts = [];
+let pendingDeleteId = null;
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 
 function adminLogin() {
   const email = document.getElementById('loginEmail').value;
   const password = document.getElementById('loginPassword').value;
-
   auth.signInWithEmailAndPassword(email, password)
     .then(async () => {
       const snapshot = await db.collection('users').where('email', '==', email).get();
@@ -86,33 +91,95 @@ function cancelEdit() {
   document.getElementById('cancelEditBtn').style.display = 'none';
 }
 
-function deleteProduct(id) { db.collection('products').doc(id).delete(); }
+function deleteProduct(id, name, imageUrl) {
+  pendingDeleteId = id;
+  document.getElementById('deleteProductName').innerText = name;
+  document.getElementById('deleteProductImg').src = imageUrl || '';
+  document.getElementById('deleteModal').classList.add('show');
+}
+
+function closeDeleteModal() {
+  pendingDeleteId = null;
+  document.getElementById('deleteModal').classList.remove('show');
+}
+
+function confirmDeleteProduct() {
+  if (pendingDeleteId) {
+    db.collection('products').doc(pendingDeleteId).delete();
+  }
+  closeDeleteModal();
+}
 
 function loadProducts() {
   db.collection('products').onSnapshot(snap => {
-    const tbody = document.getElementById('productTable');
-    tbody.innerHTML = '';
-    snap.forEach(doc => {
-      const p = doc.data();
-      const safeName = (p.productName || '').replace(/'/g, "\\'");
-      const safeDesc = (p.description || '').replace(/'/g, "\\'");
-      const safeImg = (p.imageUrl || '').replace(/'/g, "\\'");
-      tbody.innerHTML += `<tr>
-        <td><img class="prod-thumb" src="${p.imageUrl || ''}" onerror="this.style.visibility='hidden'"></td>
-        <td>${p.productName}</td><td>₱${p.price}</td><td>${p.stock}</td>
-        <td>
-          <button onclick="startEdit('${doc.id}', '${safeName}', '${safeDesc}', ${p.price}, ${p.stock}, '${safeImg}')">Edit</button>
-          <button class="delete-btn" onclick="deleteProduct('${doc.id}')">Delete</button>
-        </td>
-      </tr>`;
-    });
+    allProducts = [];
+    snap.forEach(doc => allProducts.push({ id: doc.id, ...doc.data() }));
+    renderProducts();
   });
+}
+
+function renderProducts() {
+  const search = (document.getElementById('productSearch').value || '').toLowerCase();
+  const stockF = document.getElementById('stockFilter').value;
+  const tbody = document.getElementById('productTable');
+  tbody.innerHTML = '';
+  let totalProducts = 0, lowStock = 0, outOfStock = 0;
+
+  const filtered = allProducts.filter(p => {
+    const stock = p.stock || 0;
+    const matchesSearch = (p.productName || '').toLowerCase().includes(search);
+    const matchesStock =
+      !stockF ||
+      (stockF === 'out' && stock <= 0) ||
+      (stockF === 'low' && stock > 0 && stock <= 10) ||
+      (stockF === 'high' && stock > 10);
+    return matchesSearch && matchesStock;
+  });
+
+  allProducts.forEach(p => {
+    totalProducts++;
+    if ((p.stock || 0) <= 10 && (p.stock || 0) > 0) lowStock++;
+    if ((p.stock || 0) <= 0) outOfStock++;
+  });
+
+  filtered.forEach(p => {
+    const safeName = (p.productName || '').replace(/'/g, "\\'");
+    const safeDesc = (p.description || '').replace(/'/g, "\\'");
+    const safeImg = (p.imageUrl || '').replace(/'/g, "\\'");
+    const stock = p.stock || 0;
+    tbody.innerHTML += `<tr>
+      <td><img class="prod-thumb" src="${p.imageUrl || ''}" onclick="zoomImage('${safeImg}')" onerror="this.style.visibility='hidden'"></td>
+      <td>${p.productName}</td><td>₱${p.price}</td>
+      <td class="${stock <= 0 ? 'stock-out' : stock <= 10 ? 'stock-low' : ''}">${stock}${stock <= 0 ? ' ❌ OUT' : stock <= 10 ? ' ⚠ LOW' : ''}</td>
+      <td>
+        <button onclick="startEdit('${p.id}', '${safeName}', '${safeDesc}', ${p.price}, ${p.stock}, '${safeImg}')">Edit</button>
+        <button class="delete-btn" onclick="deleteProduct('${p.id}', '${safeName}', '${safeImg}')">Delete</button>
+      </td>
+    </tr>`;
+  });
+
+  document.getElementById('totalProducts').innerText = totalProducts;
+  document.getElementById('lowStockProducts').innerText = lowStock;
+  document.getElementById('outOfStockProducts').innerText = outOfStock;
+}
+
+function zoomImage(url) {
+  document.getElementById('zoomedImg').src = url;
+  document.getElementById('imageZoomModal').classList.add('show');
+}
+
+function closeImageZoom() {
+  document.getElementById('imageZoomModal').classList.remove('show');
 }
 
 function loadOrders() {
   db.collection('orders').orderBy('timestamp', 'desc').onSnapshot(snap => {
     allOrders = [];
     snap.forEach(doc => allOrders.push({ id: doc.id, ...doc.data() }));
+    document.getElementById('totalOrders').innerText = allOrders.length;
+    document.getElementById('pendingOrders').innerText = allOrders.filter(o => o.status === 'Pending').length;
+    document.getElementById('processingOrders').innerText = allOrders.filter(o => o.status === 'Processing').length;
+    document.getElementById('deliveredOrders').innerText = allOrders.filter(o => o.status === 'Delivered').length;
     renderOrders();
   });
 }
@@ -121,7 +188,6 @@ function renderOrders() {
   const search = (document.getElementById('orderSearch').value || '').toLowerCase();
   const statusF = document.getElementById('statusFilter').value;
   const dateF = document.getElementById('dateFilter').value;
-
   const tbody = document.getElementById('orderTable');
   tbody.innerHTML = '';
   allOrders
@@ -130,34 +196,67 @@ function renderOrders() {
     .filter(o => {
       if (!dateF) return true;
       if (!o.timestamp) return false;
-      const d = o.timestamp.toDate();
-      const dStr = d.toISOString().slice(0, 10);
-      return dStr === dateF;
+      return o.timestamp.toDate().toLocaleDateString('en-CA') === dateF;
     })
     .forEach(o => {
       const dateStr = o.timestamp ? o.timestamp.toDate().toLocaleString() : '—';
-      tbody.innerHTML += `<tr>
-        <td>${o.customerName || o.userId}</td>
-        <td>${o.items || '—'}</td>
+      tbody.innerHTML += `<tr style="cursor:pointer;" onclick="viewOrderDetail('${o.id}')">
+        <td>${esc(o.customerName || o.userId)}</td>
+        <td>${esc(o.items) || '—'}</td>
         <td>${dateStr}</td>
-        <td>₱${o.total}</td>
-        <td>
-          <select class="status-select" onchange="updateStatus('${o.id}', this.value)">
-            <option ${o.status==='Pending'?'selected':''}>Pending</option>
-            <option ${o.status==='Processing'?'selected':''}>Processing</option>
-            <option ${o.status==='Delivered'?'selected':''}>Delivered</option>
+        <td>₱${Number(o.total).toFixed(2)}</td>
+        <td onclick="event.stopPropagation()">
+          <select class="status-select status-${(o.status || 'pending').toLowerCase()}" onchange="updateStatus(this, '${o.id}', this.value)">
+            <option ${o.status === 'Pending' ? 'selected' : ''}>Pending</option>
+            <option ${o.status === 'Processing' ? 'selected' : ''}>Processing</option>
+            <option ${o.status === 'Delivered' ? 'selected' : ''}>Delivered</option>
           </select>
         </td>
       </tr>`;
     });
 }
 
-function updateStatus(orderId, status) { db.collection('orders').doc(orderId).update({ status }); }
+function updateStatus(selectEl, orderId, status) {
+  db.collection('orders').doc(orderId).update({ status });
+  selectEl.className = 'status-select status-' + status.toLowerCase();
+}
+
+function viewOrderDetail(orderId) {
+  const o = allOrders.find(x => x.id === orderId);
+  if (!o) return;
+  document.getElementById('odCustomer').innerText = o.customerName || o.userId;
+  document.getElementById('odDate').innerText = o.timestamp ? o.timestamp.toDate().toLocaleString() : '';
+  let html = '';
+  (o.itemsDetailed || []).forEach(it => {
+    html += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+      <img src="${esc(it.imageUrl)}" style="width:40px;height:40px;object-fit:contain;background:#F7F5FC;border-radius:8px;padding:4px;">
+      <div><strong>${esc(it.name)}</strong><br>₱${Number(it.price).toFixed(2)} x ${it.quantity}</div>
+    </div>`;
+  });
+  if (!html) html = '<p>No item details available.</p>';
+  if (o.deliveryFee != null) {
+    html += `<hr><p>Subtotal: ₱${Number(o.subtotal).toFixed(2)}<br>Delivery fee: ₱${Number(o.deliveryFee).toFixed(2)}</p>`;
+  }
+  if (o.address || o.paymentMethod || o.notes) {
+    html += `<hr><p><strong>Deliver to:</strong><br>${esc(o.address) || '—'}</p>
+      <p><strong>Payment:</strong> ${esc(o.paymentMethod) || '—'}</p>`;
+    if (o.notes) html += `<p><strong>Notes:</strong> ${esc(o.notes)}</p>`;
+  }
+  document.getElementById('odItems').innerHTML = html;
+  document.getElementById('odTotal').innerText = 'Total: ₱' + Number(o.total).toFixed(2);
+  document.getElementById('orderDetailModal').classList.add('show');
+}
+
+function closeOrderDetail() {
+  document.getElementById('orderDetailModal').classList.remove('show');
+}
 
 function loadUsers() {
   db.collection('users').onSnapshot(snap => {
     allUsers = [];
     snap.forEach(doc => allUsers.push({ id: doc.id, ...doc.data() }));
+    document.getElementById('totalUsers').innerText = allUsers.length;
+    document.getElementById('totalAdmins').innerText = allUsers.filter(u => u.role === 'admin').length;
     renderUsers();
   });
 }
@@ -170,11 +269,11 @@ function renderUsers() {
     .filter(u => (u.name || '').toLowerCase().includes(search) || (u.email || '').toLowerCase().includes(search))
     .forEach(u => {
       tbody.innerHTML += `<tr>
-        <td>${u.name || ''}</td><td>${u.email || ''}</td>
+        <td>${esc(u.name)}</td><td>${esc(u.email)}</td>
         <td>
           <select class="role-select" onchange="updateRole('${u.id}', this.value)">
-            <option value="user" ${u.role==='user'?'selected':''}>user</option>
-            <option value="admin" ${u.role==='admin'?'selected':''}>admin</option>
+            <option value="user" ${u.role === 'user' ? 'selected' : ''}>user</option>
+            <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>admin</option>
           </select>
         </td>
       </tr>`;
