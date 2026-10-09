@@ -1,92 +1,172 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Slaytionary Admin Dashboard</title>
-<link rel="stylesheet" href="style.css">
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Slaytionary Admin Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
 <div id="loginBox">
-  <img src="https://raw.githubusercontent.com/villonessophiaangela-sys/slaytionary-mcommerce/main/images/Slaytionary_logo.jpg" class="logo">
-  <h2>Slaytionary</h2>
-  <p class="subtitle">Admin Dashboard</p>
-  <input id="loginEmail" placeholder="Email">
-  <input id="loginPassword" type="password" placeholder="Password">
-  <button onclick="adminLogin()">Login</button>
-  <p id="loginError" class="error"></p>
+    <img src="https://raw.githubusercontent.com/villonessophiaangela-sys/slaytionary-mcommerce/main/images/Slaytionary_logo.jpg" class="logo">
+    <h2>Slaytionary</h2>
+    <p class="subtitle">Admin Dashboard</p>
+    <input id="loginEmail" placeholder="Email">
+    <input id="loginPassword" type="password" placeholder="Password">
+    <button onclick="adminLogin()">Login</button>
+    <p id="loginError" class="error"></p>
 </div>
 
 <div id="dashboard" style="display:none;">
-  <div class="sidebar">
-    <img src="https://raw.githubusercontent.com/villonessophiaangela-sys/slaytionary-mcommerce/main/images/Slaytionary_logo.jpg" class="sidebar-logo">
-    <h3>Slaytionary</h3>
-    <button onclick="showSection('products')">📦 Products</button>
-    <button onclick="showSection('orders')">🧾 Orders</button>
-    <button onclick="showSection('users')">👤 Users</button>
-    <button onclick="confirmLogout()">🚪 Logout</button>
-    <div class="who-logged-in">Logged in as<br><span id="adminNameLabel">...</span></div>
-  </div>
+    <div class="sidebar">
+        <img src="https://raw.githubusercontent.com/villonessophiaangela-sys/slaytionary-mcommerce/main/images/Slaytionary_logo.jpg" class="sidebar-logo">
+        <h3>Slaytionary</h3>
+        <div class="who-logged-in">Logged in as<br><span id="adminNameLabel">...</span></div>
+        <button onclick="showSection('products')">📦 Products</button>
+        <button onclick="showSection('orders')">🧾 Orders</button>
+        <button onclick="showSection('users')">👤 Users</button>
+        <button onclick="confirmLogout()">🚪 Logout</button>
+    </div>
 
-  <div class="main">
-    <section id="products" class="section active">
-      <h2>Product Management</h2>
-      <form onsubmit="saveProduct(event)">
-        <input type="hidden" id="editingId" value="">
-        <input id="pName" placeholder="Product Name" required>
-        <input id="pDesc" placeholder="Description">
-        <input id="pPrice" type="number" step="0.01" placeholder="Price" required>
-        <input id="pStock" type="number" placeholder="Stock" required>
-        <input id="pImage" placeholder="Image URL">
-        <button type="submit" id="formSubmitBtn">Add Product</button>
-        <button type="button" id="cancelEditBtn" onclick="cancelEdit()" style="display:none;">Cancel</button>
-      </form>
-      <table>
-        <thead><tr><th>Image</th><th>Name</th><th>Price</th><th>Stock</th><th>Action</th></tr></thead>
-        <tbody id="productTable"></tbody>
-      </table>
-    </section>
+    <div class="main">
+        <section id="products" class="section active">
+            <h2>Product Management</h2>
+            <div class="stats-row">
+                <div class="stat-card">
+                    <h4>Total Products</h4>
+                    <span id="totalProducts">0</span>
+                </div>
+                <div class="stat-card">
+                    <h4>Low Stock (Below 10)</h4>
+                    <span id="lowStockProducts">0</span>
+                </div>
+                <div class="stat-card">
+                    <h4>Out of Stock (0 Stock)</h4>
+                    <span id="outOfStockProducts">0</span>
+                </div>
+            </div>
+            <div class="filters">
+                <input id="productSearch" placeholder="Search by product name..." oninput="loadProducts()">
+                <select id="stockFilter" onchange="loadProducts()">
+                    <option value="">All Stock</option>
+                    <option value="out">Out of Stock (0)</option>
+                    <option value="low">Low Stock (1-10)</option>
+                    <option value="high">In Stock (11+)</option>
+                </select>
+            </div>
+            <form onsubmit="saveProduct(event)">
+                <input type="hidden" id="editingId" value="">
+                <input id="pName" placeholder="Product Name" required>
+                <input id="pDesc" placeholder="Description">
+                <input id="pPrice" type="number" step="0.01" placeholder="Price" required>
+                <input id="pStock" type="number" placeholder="Stock" required>
+                <input id="pImage" placeholder="Image URL">
+                <button type="submit" id="formSubmitBtn">Add Product</button>
+                <button type="button" id="cancelEditBtn" onclick="cancelEdit()" style="display:none;">Cancel</button>
+            </form>
+            <table>
+                <thead><tr><th>Image</th><th>Name</th><th>Price</th><th>Stock</th><th>Action</th></tr></thead>
+                <tbody id="productTable"></tbody>
+            </table>
+        </section>
 
-    <section id="orders" class="section">
-      <h2>Orders</h2>
-      <div class="filters">
-        <input id="orderSearch" placeholder="Search by customer name..." oninput="loadOrders()">
-        <select id="statusFilter" onchange="loadOrders()">
-          <option value="">All Statuses</option>
-          <option value="Pending">Pending</option>
-          <option value="Processing">Processing</option>
-          <option value="Delivered">Delivered</option>
-        </select>
-        <input id="dateFilter" type="date" onchange="loadOrders()">
-      </div>
-      <table>
-        <thead><tr><th>Customer Name</th><th>Products Ordered</th><th>Date</th><th>Total Amount</th><th>Status</th></tr></thead>
-        <tbody id="orderTable"></tbody>
-      </table>
-    </section>
+        <section id="orders" class="section">
+            <h2>Orders</h2>
+            <div class="stats-row">
+                <div class="stat-card">
+                    <h4>Total Orders</h4>
+                    <span id="totalOrders">0</span>
+                </div>
+                <div class="stat-card">
+                    <h4>Pending</h4>
+                    <span id="pendingOrders">0</span>
+                </div>
+                <div class="stat-card">
+                    <h4>Processing</h4>
+                    <span id="processingOrders">0</span>
+                </div>
+                <div class="stat-card">
+                    <h4>Delivered</h4>
+                    <span id="deliveredOrders">0</span>
+                </div>
+            </div>
+            <div class="filters">
+                <input id="orderSearch" placeholder="Search by customer name..." oninput="loadOrders()">
+                <select id="statusFilter" onchange="loadOrders()">
+                    <option value="">All Statuses</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Processing">Processing</option>
+                    <option value="Delivered">Delivered</option>
+                </select>
+                <input id="dateFilter" type="date" onchange="loadOrders()">
+            </div>
+            <table>
+                <thead><tr><th>Customer Name</th><th>Products Ordered</th><th>Date</th><th>Total Amount</th><th>Status</th></tr></thead>
+                <tbody id="orderTable"></tbody>
+            </table>
+        </section>
 
-    <section id="users" class="section">
-      <h2>Users</h2>
-      <input id="userSearch" placeholder="Search by name or email..." oninput="loadUsers()">
-      <table>
-        <thead><tr><th>Name</th><th>Email</th><th>Role</th></tr></thead>
-        <tbody id="userTable"></tbody>
-      </table>
-    </section>
-  </div>
+        <section id="users" class="section">
+            <h2>Users</h2>
+            <div class="stats-row">
+                <div class="stat-card">
+                    <h4>Total Users</h4>
+                    <span id="totalUsers">0</span>
+                </div>
+                <div class="stat-card">
+                    <h4>Admins</h4>
+                    <span id="totalAdmins">0</span>
+                </div>
+            </div>
+            <input id="userSearch" placeholder="Search by name or email..." oninput="loadUsers()">
+            <table>
+                <thead><tr><th>Name</th><th>Email</th><th>Role</th></tr></thead>
+                <tbody id="userTable"></tbody>
+            </table>
+        </section>
+    </div>
 </div>
 
 <div id="logoutModal" class="modal">
-  <div class="modal-box">
-    <p>Are you sure you want to log out?</p>
-    <div class="modal-actions">
-      <button onclick="closeLogoutModal()" class="cancel-btn">Cancel</button>
-      <button onclick="logout()" class="confirm-btn">OK</button>
+    <div class="modal-box">
+        <p>Are you sure you want to log out?</p>
+        <div class="modal-actions">
+            <button onclick="closeLogoutModal()" class="cancel-btn">Cancel</button>
+            <button onclick="logout()" class="confirm-btn">OK</button>
+        </div>
     </div>
-  </div>
+</div>
+
+<div id="deleteModal" class="modal">
+    <div class="modal-box">
+        <p>Delete this product?</p>
+        <img id="deleteProductImg" class="prod-thumb" style="width:60px;height:60px;margin:10px auto;display:block;">
+        <strong id="deleteProductName"></strong>
+        <div class="modal-actions">
+            <button onclick="closeDeleteModal()" class="cancel-btn">Cancel</button>
+            <button onclick="confirmDeleteProduct()" class="confirm-btn">Delete</button>
+        </div>
+    </div>
+</div>
+
+<div id="imageZoomModal" class="modal" onclick="closeImageZoom()">
+    <img id="zoomedImg" style="max-width:80%;max-height:80%;border-radius:12px;">
+</div>
+
+<div id="orderDetailModal" class="modal" onclick="if(event.target===this)closeOrderDetail()">
+    <div class="modal-box" style="max-width:400px;">
+        <h3 id="odCustomer"></h3>
+        <p id="odDate" style="color:#888;font-size:12px;"></p>
+        <div id="odItems" style="text-align:left;margin:14px 0;"></div>
+        <strong id="odTotal"></strong>
+        <div class="modal-actions">
+            <button onclick="closeOrderDetail()" class="cancel-btn">Close</button>
+        </div>
+    </div>
 </div>
 
 <script src="app.js"></script>
