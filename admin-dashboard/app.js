@@ -14,6 +14,7 @@ let allOrders = [];
 let allUsers = [];
 let allProducts = [];
 let pendingDeleteId = null;
+let secondaryApp = null;
 
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -281,3 +282,30 @@ function renderUsers() {
 }
 
 function updateRole(userId, role) { db.collection('users').doc(userId).update({ role }); }
+
+// Creates the login through a second hidden Firebase connection so the admin stays logged in
+async function addUser(e) {
+  e.preventDefault();
+  const form = e.target;
+  const msg = document.getElementById('addUserMsg');
+  const name = document.getElementById('uName').value.trim();
+  const email = document.getElementById('uEmail').value.trim();
+  const password = document.getElementById('uPassword').value;
+  const role = document.getElementById('uRole').value;
+
+  msg.style.color = '#888';
+  msg.innerText = 'Creating user...';
+  try {
+    if (!secondaryApp) secondaryApp = firebase.initializeApp(firebaseConfig, 'Secondary');
+    const secondaryAuth = secondaryApp.auth();
+    const cred = await secondaryAuth.createUserWithEmailAndPassword(email, password);
+    await db.collection('users').doc(cred.user.uid).set({ name, email, role });
+    await secondaryAuth.signOut();
+    msg.style.color = '#2b8a3e';
+    msg.innerText = 'User created. They can now log in with that email and password.';
+    form.reset();
+  } catch (err) {
+    msg.style.color = '#e03131';
+    msg.innerText = err.message;
+  }
+                                   }
