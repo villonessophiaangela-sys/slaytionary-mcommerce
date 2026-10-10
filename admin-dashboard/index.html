@@ -122,6 +122,18 @@
                     <span id="totalAdmins">0</span>
                 </div>
             </div>
+            <form id="addUserForm" onsubmit="addUser(event)">
+                <h4 style="margin:0 0 10px;color:#8E7CF0;">Add User</h4>
+                <input id="uName" placeholder="Name" required>
+                <input id="uEmail" type="email" placeholder="Email" required>
+                <input id="uPassword" type="password" placeholder="Password (min 6 characters)" minlength="6" required>
+                <select id="uRole" style="display:block;width:100%;margin-bottom:10px;padding:10px;border:1px solid #ddd;border-radius:8px;">
+                    <option value="user">user</option>
+                    <option value="admin">admin</option>
+                </select>
+                <button type="submit">Add User</button>
+                <p id="addUserMsg" style="margin:10px 0 0;font-size:13px;"></p>
+            </form>
             <input id="userSearch" placeholder="Search by name or email..." oninput="loadUsers()">
             <table>
                 <thead><tr><th>Name</th><th>Email</th><th>Role</th></tr></thead>
