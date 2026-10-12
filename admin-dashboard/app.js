@@ -1,4 +1,3 @@
-
 const firebaseConfig = {
   apiKey: "AIzaSyBQVRNESVgnx7wGEnUSRuPBk8NEl-INjDI",
   authDomain: "slaytionary-mcommerce.firebaseapp.com",
@@ -14,9 +13,7 @@ const db = firebase.firestore();
 let allOrders = [];
 let allUsers = [];
 let allProducts = [];
-let archivedProducts = [];
-let pendingArchiveId = null;
-let pendingForeverId = null;
+let pendingDeleteId = null;
 let secondaryApp = null;
 
 function esc(s) {
@@ -44,7 +41,6 @@ function adminLogin() {
       document.getElementById('loginBox').style.display = 'none';
       document.getElementById('dashboard').style.display = 'flex';
       loadProducts();
-      loadArchived();
       loadOrders();
       loadUsers();
     })
@@ -58,20 +54,6 @@ function logout() { auth.signOut().then(() => location.reload()); }
 function showSection(id) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-}
-
-function setTab(id, on) {
-  const b = document.getElementById(id);
-  b.style.background = on ? '#8E7CF0' : '#e9e6f7';
-  b.style.color = on ? 'white' : '#555';
-}
-
-function showProductTab(tab) {
-  const active = tab === 'active';
-  document.getElementById('activeView').style.display = active ? 'block' : 'none';
-  document.getElementById('archivedView').style.display = active ? 'none' : 'block';
-  setTab('tabActive', active);
-  setTab('tabArchived', !active);
 }
 
 function saveProduct(e) {
@@ -105,80 +87,28 @@ function startEdit(id, name, desc, price, stock, imageUrl) {
 
 function cancelEdit() {
   document.getElementById('editingId').value = '';
-  document.querySelector('#activeView form').reset();
+  document.querySelector('#products form').reset();
   document.getElementById('formSubmitBtn').innerText = 'Add Product';
   document.getElementById('cancelEditBtn').style.display = 'none';
 }
 
-// "Delete" in the product table = soft delete: move to the archivedProducts collection (same ID)
-function archiveProduct(id, name, imageUrl) {
-  pendingArchiveId = id;
-  document.getElementById('archiveProductName').innerText = name;
-  document.getElementById('archiveProductImg').src = imageUrl || '';
-  document.getElementById('archiveModal').classList.add('show');
+function deleteProduct(id, name, imageUrl) {
+  pendingDeleteId = id;
+  document.getElementById('deleteProductName').innerText = name;
+  document.getElementById('deleteProductImg').src = imageUrl || '';
+  document.getElementById('deleteModal').classList.add('show');
 }
 
-function closeArchiveModal() {
-  pendingArchiveId = null;
-  document.getElementById('archiveModal').classList.remove('show');
+function closeDeleteModal() {
+  pendingDeleteId = null;
+  document.getElementById('deleteModal').classList.remove('show');
 }
 
-async function confirmArchive() {
-  const id = pendingArchiveId;
-  const p = allProducts.find(x => x.id === id);
-  closeArchiveModal();
-  if (!id || !p) return;
-  const { id: _omit, ...data } = p;
-  const batch = db.batch();
-  batch.set(db.collection('archivedProducts').doc(id), {
-    ...data,
-    archivedAt: firebase.firestore.FieldValue.serverTimestamp()
-  });
-  batch.delete(db.collection('products').doc(id));
-  try {
-    await batch.commit();
-  } catch (err) {
-    alert('Delete failed: ' + err.message + '\n\nMake sure the archivedProducts rule was published in Firebase.');
+function confirmDeleteProduct() {
+  if (pendingDeleteId) {
+    db.collection('products').doc(pendingDeleteId).delete();
   }
-}
-
-// Restore = move it back to products with the same ID
-async function restoreProduct(id) {
-  const p = archivedProducts.find(x => x.id === id);
-  if (!p) return;
-  const { id: _omit, archivedAt, ...data } = p;
-  const batch = db.batch();
-  batch.set(db.collection('products').doc(id), data);
-  batch.delete(db.collection('archivedProducts').doc(id));
-  try {
-    await batch.commit();
-  } catch (err) {
-    alert('Restore failed: ' + err.message);
-  }
-}
-
-// Permanent delete (from the Archived tab)
-function deleteForever(id, name, imageUrl) {
-  pendingForeverId = id;
-  document.getElementById('foreverName').innerText = name;
-  document.getElementById('foreverImg').src = imageUrl || '';
-  document.getElementById('foreverModal').classList.add('show');
-}
-
-function closeForeverModal() {
-  pendingForeverId = null;
-  document.getElementById('foreverModal').classList.remove('show');
-}
-
-async function confirmForever() {
-  const id = pendingForeverId;
-  closeForeverModal();
-  if (!id) return;
-  try {
-    await db.collection('archivedProducts').doc(id).delete();
-  } catch (err) {
-    alert('Permanent delete failed: ' + err.message);
-  }
+  closeDeleteModal();
 }
 
 function loadProducts() {
@@ -189,20 +119,12 @@ function loadProducts() {
   });
 }
 
-function loadArchived() {
-  db.collection('archivedProducts').onSnapshot(snap => {
-    archivedProducts = [];
-    snap.forEach(doc => archivedProducts.push({ id: doc.id, ...doc.data() }));
-    renderArchived();
-  }, err => console.error('archivedProducts:', err));
-}
-
 function renderProducts() {
   const search = (document.getElementById('productSearch').value || '').toLowerCase();
   const stockF = document.getElementById('stockFilter').value;
   const tbody = document.getElementById('productTable');
   tbody.innerHTML = '';
-  let lowStock = 0, outOfStock = 0;
+  let totalProducts = 0, lowStock = 0, outOfStock = 0;
 
   const filtered = allProducts.filter(p => {
     const stock = p.stock || 0;
@@ -216,6 +138,7 @@ function renderProducts() {
   });
 
   allProducts.forEach(p => {
+    totalProducts++;
     if ((p.stock || 0) <= 10 && (p.stock || 0) > 0) lowStock++;
     if ((p.stock || 0) <= 0) outOfStock++;
   });
@@ -227,37 +150,18 @@ function renderProducts() {
     const stock = p.stock || 0;
     tbody.innerHTML += `<tr>
       <td><img class="prod-thumb" src="${p.imageUrl || ''}" onclick="zoomImage('${safeImg}')" onerror="this.style.visibility='hidden'"></td>
-      <td>${esc(p.productName)}</td><td>₱${p.price}</td>
+      <td>${p.productName}</td><td>₱${p.price}</td>
       <td class="${stock <= 0 ? 'stock-out' : stock <= 10 ? 'stock-low' : ''}">${stock}${stock <= 0 ? ' ❌ OUT' : stock <= 10 ? ' ⚠ LOW' : ''}</td>
       <td>
         <button onclick="startEdit('${p.id}', '${safeName}', '${safeDesc}', ${p.price}, ${p.stock}, '${safeImg}')">Edit</button>
-        <button class="delete-btn" onclick="archiveProduct('${p.id}', '${safeName}', '${safeImg}')">Delete</button>
+        <button class="delete-btn" onclick="deleteProduct('${p.id}', '${safeName}', '${safeImg}')">Delete</button>
       </td>
     </tr>`;
   });
 
-  document.getElementById('totalProducts').innerText = allProducts.length;
+  document.getElementById('totalProducts').innerText = totalProducts;
   document.getElementById('lowStockProducts').innerText = lowStock;
   document.getElementById('outOfStockProducts').innerText = outOfStock;
-}
-
-function renderArchived() {
-  document.getElementById('archivedCount').innerText = archivedProducts.length;
-  const atbody = document.getElementById('archivedTable');
-  atbody.innerHTML = '';
-  archivedProducts.forEach(p => {
-    const safeName = (p.productName || '').replace(/'/g, "\\'");
-    const safeImg = (p.imageUrl || '').replace(/'/g, "\\'");
-    const when = p.archivedAt && p.archivedAt.toDate ? p.archivedAt.toDate().toLocaleDateString() : '—';
-    atbody.innerHTML += `<tr>
-      <td><img class="prod-thumb" src="${p.imageUrl || ''}" onclick="zoomImage('${safeImg}')" onerror="this.style.visibility='hidden'"></td>
-      <td>${esc(p.productName)}</td><td>₱${p.price}</td><td>${p.stock ?? 0}</td><td>${when}</td>
-      <td>
-        <button onclick="restoreProduct('${p.id}')">Restore</button>
-        <button class="delete-btn" onclick="deleteForever('${p.id}', '${safeName}', '${safeImg}')">Delete permanently</button>
-      </td>
-    </tr>`;
-  });
 }
 
 function zoomImage(url) {
@@ -405,30 +309,3 @@ async function addUser(e) {
     msg.innerText = err.message;
   }
 }
-
-// Wording for the Delete popup / Archived tab, and the permanent-delete popup
-(function () {
-  const title = document.querySelector('#archiveModal .modal-box > p:nth-of-type(1)');
-  if (title) title.innerText = 'Delete this product?';
-  const note = document.querySelector('#archiveModal .modal-box > p:nth-of-type(2)');
-  if (note) note.innerText = 'It moves to the Archived tab and is removed from the shop in the mobile app (customers with it in their cart see "No longer available"). You can restore it, or delete it permanently from the Archived tab.';
-  const btn = document.querySelector('#archiveModal .confirm-btn');
-  if (btn) btn.innerText = 'Delete';
-  const tabNote = document.querySelector('#archivedView > p');
-  if (tabNote) tabNote.innerText = 'Deleted products wait here. They are removed from the shop in the mobile app. Restore brings them back, or delete them permanently.';
-
-  const fm = document.createElement('div');
-  fm.id = 'foreverModal';
-  fm.className = 'modal';
-  fm.innerHTML = `<div class="modal-box">
-    <p>Delete permanently?</p>
-    <img id="foreverImg" class="prod-thumb" style="width:60px;height:60px;margin:10px auto;display:block;">
-    <strong id="foreverName"></strong>
-    <p style="font-size:12px;color:#e03131;margin-top:10px;">This removes it for good and cannot be undone.</p>
-    <div class="modal-actions">
-      <button onclick="closeForeverModal()" class="cancel-btn">Cancel</button>
-      <button onclick="confirmForever()" class="confirm-btn" style="background:#e03131;">Delete permanently</button>
-    </div>
-  </div>`;
-  document.body.appendChild(fm);
-})();
