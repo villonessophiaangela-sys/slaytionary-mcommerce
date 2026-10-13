@@ -13,7 +13,10 @@ const db = firebase.firestore();
 let allOrders = [];
 let allUsers = [];
 let allProducts = [];
-let pendingDeleteId = null;
+let archivedProducts = [];
+let pendingArchiveId = null;
+let pendingForeverId = null;
+let pendingChange = null;
 let secondaryApp = null;
 
 function esc(s) {
@@ -32,6 +35,11 @@ function adminLogin() {
         return;
       }
       const userData = snapshot.docs[0].data();
+      if ((userData.status || 'active') === 'inactive') {
+        await auth.signOut();
+        document.getElementById('loginError').innerText = "Your account is inactive. Please contact an administrator.";
+        return;
+      }
       if (userData.role !== "admin") {
         await auth.signOut();
         document.getElementById('loginError').innerText = "Access denied. Admin account only.";
@@ -41,6 +49,7 @@ function adminLogin() {
       document.getElementById('loginBox').style.display = 'none';
       document.getElementById('dashboard').style.display = 'flex';
       loadProducts();
+      loadArchived();
       loadOrders();
       loadUsers();
     })
@@ -54,6 +63,20 @@ function logout() { auth.signOut().then(() => location.reload()); }
 function showSection(id) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
+}
+
+function setTab(id, on) {
+  const b = document.getElementById(id);
+  b.style.background = on ? '#8E7CF0' : '#e9e6f7';
+  b.style.color = on ? 'white' : '#555';
+}
+
+function showProductTab(tab) {
+  const active = tab === 'active';
+  document.getElementById('activeView').style.display = active ? 'block' : 'none';
+  document.getElementById('archivedView').style.display = active ? 'none' : 'block';
+  setTab('tabActive', active);
+  setTab('tabArchived', !active);
 }
 
 function saveProduct(e) {
@@ -87,28 +110,80 @@ function startEdit(id, name, desc, price, stock, imageUrl) {
 
 function cancelEdit() {
   document.getElementById('editingId').value = '';
-  document.querySelector('#products form').reset();
+  document.querySelector('#activeView form').reset();
   document.getElementById('formSubmitBtn').innerText = 'Add Product';
   document.getElementById('cancelEditBtn').style.display = 'none';
 }
 
-function deleteProduct(id, name, imageUrl) {
-  pendingDeleteId = id;
-  document.getElementById('deleteProductName').innerText = name;
-  document.getElementById('deleteProductImg').src = imageUrl || '';
-  document.getElementById('deleteModal').classList.add('show');
+// "Delete" in the product table = soft delete: move to the archivedProducts collection (same ID)
+function archiveProduct(id, name, imageUrl) {
+  pendingArchiveId = id;
+  document.getElementById('archiveProductName').innerText = name;
+  document.getElementById('archiveProductImg').src = imageUrl || '';
+  document.getElementById('archiveModal').classList.add('show');
 }
 
-function closeDeleteModal() {
-  pendingDeleteId = null;
-  document.getElementById('deleteModal').classList.remove('show');
+function closeArchiveModal() {
+  pendingArchiveId = null;
+  document.getElementById('archiveModal').classList.remove('show');
 }
 
-function confirmDeleteProduct() {
-  if (pendingDeleteId) {
-    db.collection('products').doc(pendingDeleteId).delete();
+async function confirmArchive() {
+  const id = pendingArchiveId;
+  const p = allProducts.find(x => x.id === id);
+  closeArchiveModal();
+  if (!id || !p) return;
+  const { id: _omit, ...data } = p;
+  const batch = db.batch();
+  batch.set(db.collection('archivedProducts').doc(id), {
+    ...data,
+    archivedAt: firebase.firestore.FieldValue.serverTimestamp()
+  });
+  batch.delete(db.collection('products').doc(id));
+  try {
+    await batch.commit();
+  } catch (err) {
+    alert('Delete failed: ' + err.message + '\n\nMake sure the archivedProducts rule was published in Firebase.');
   }
-  closeDeleteModal();
+}
+
+// Restore = move it back to products with the same ID
+async function restoreProduct(id) {
+  const p = archivedProducts.find(x => x.id === id);
+  if (!p) return;
+  const { id: _omit, archivedAt, ...data } = p;
+  const batch = db.batch();
+  batch.set(db.collection('products').doc(id), data);
+  batch.delete(db.collection('archivedProducts').doc(id));
+  try {
+    await batch.commit();
+  } catch (err) {
+    alert('Restore failed: ' + err.message);
+  }
+}
+
+// Permanent delete (from the Archived tab)
+function deleteForever(id, name, imageUrl) {
+  pendingForeverId = id;
+  document.getElementById('foreverName').innerText = name;
+  document.getElementById('foreverImg').src = imageUrl || '';
+  document.getElementById('foreverModal').classList.add('show');
+}
+
+function closeForeverModal() {
+  pendingForeverId = null;
+  document.getElementById('foreverModal').classList.remove('show');
+}
+
+async function confirmForever() {
+  const id = pendingForeverId;
+  closeForeverModal();
+  if (!id) return;
+  try {
+    await db.collection('archivedProducts').doc(id).delete();
+  } catch (err) {
+    alert('Permanent delete failed: ' + err.message);
+  }
 }
 
 function loadProducts() {
@@ -119,12 +194,20 @@ function loadProducts() {
   });
 }
 
+function loadArchived() {
+  db.collection('archivedProducts').onSnapshot(snap => {
+    archivedProducts = [];
+    snap.forEach(doc => archivedProducts.push({ id: doc.id, ...doc.data() }));
+    renderArchived();
+  }, err => console.error('archivedProducts:', err));
+}
+
 function renderProducts() {
   const search = (document.getElementById('productSearch').value || '').toLowerCase();
   const stockF = document.getElementById('stockFilter').value;
   const tbody = document.getElementById('productTable');
   tbody.innerHTML = '';
-  let totalProducts = 0, lowStock = 0, outOfStock = 0;
+  let lowStock = 0, outOfStock = 0;
 
   const filtered = allProducts.filter(p => {
     const stock = p.stock || 0;
@@ -138,7 +221,6 @@ function renderProducts() {
   });
 
   allProducts.forEach(p => {
-    totalProducts++;
     if ((p.stock || 0) <= 10 && (p.stock || 0) > 0) lowStock++;
     if ((p.stock || 0) <= 0) outOfStock++;
   });
@@ -150,18 +232,37 @@ function renderProducts() {
     const stock = p.stock || 0;
     tbody.innerHTML += `<tr>
       <td><img class="prod-thumb" src="${p.imageUrl || ''}" onclick="zoomImage('${safeImg}')" onerror="this.style.visibility='hidden'"></td>
-      <td>${p.productName}</td><td>₱${p.price}</td>
+      <td>${esc(p.productName)}</td><td>₱${p.price}</td>
       <td class="${stock <= 0 ? 'stock-out' : stock <= 10 ? 'stock-low' : ''}">${stock}${stock <= 0 ? ' ❌ OUT' : stock <= 10 ? ' ⚠ LOW' : ''}</td>
       <td>
         <button onclick="startEdit('${p.id}', '${safeName}', '${safeDesc}', ${p.price}, ${p.stock}, '${safeImg}')">Edit</button>
-        <button class="delete-btn" onclick="deleteProduct('${p.id}', '${safeName}', '${safeImg}')">Delete</button>
+        <button class="delete-btn" onclick="archiveProduct('${p.id}', '${safeName}', '${safeImg}')">Delete</button>
       </td>
     </tr>`;
   });
 
-  document.getElementById('totalProducts').innerText = totalProducts;
+  document.getElementById('totalProducts').innerText = allProducts.length;
   document.getElementById('lowStockProducts').innerText = lowStock;
   document.getElementById('outOfStockProducts').innerText = outOfStock;
+}
+
+function renderArchived() {
+  document.getElementById('archivedCount').innerText = archivedProducts.length;
+  const atbody = document.getElementById('archivedTable');
+  atbody.innerHTML = '';
+  archivedProducts.forEach(p => {
+    const safeName = (p.productName || '').replace(/'/g, "\\'");
+    const safeImg = (p.imageUrl || '').replace(/'/g, "\\'");
+    const when = p.archivedAt && p.archivedAt.toDate ? p.archivedAt.toDate().toLocaleDateString() : '—';
+    atbody.innerHTML += `<tr>
+      <td><img class="prod-thumb" src="${p.imageUrl || ''}" onclick="zoomImage('${safeImg}')" onerror="this.style.visibility='hidden'"></td>
+      <td>${esc(p.productName)}</td><td>₱${p.price}</td><td>${p.stock ?? 0}</td><td>${when}</td>
+      <td>
+        <button onclick="restoreProduct('${p.id}')">Restore</button>
+        <button class="delete-btn" onclick="deleteForever('${p.id}', '${safeName}', '${safeImg}')">Delete permanently</button>
+      </td>
+    </tr>`;
+  });
 }
 
 function zoomImage(url) {
@@ -182,6 +283,7 @@ function loadOrders() {
     document.getElementById('processingOrders').innerText = allOrders.filter(o => o.status === 'Processing').length;
     document.getElementById('deliveredOrders').innerText = allOrders.filter(o => o.status === 'Delivered').length;
     renderOrders();
+    renderUsers();
   });
 }
 
@@ -258,30 +360,99 @@ function loadUsers() {
     snap.forEach(doc => allUsers.push({ id: doc.id, ...doc.data() }));
     document.getElementById('totalUsers').innerText = allUsers.length;
     document.getElementById('totalAdmins').innerText = allUsers.filter(u => u.role === 'admin').length;
+    document.getElementById('inactiveUsers').innerText = allUsers.filter(u => u.status === 'inactive').length;
     renderUsers();
   });
 }
 
+function orderStats(uid) {
+  const mine = allOrders.filter(o => o.userId === uid);
+  return { count: mine.length, total: mine.reduce((s, o) => s + Number(o.total || 0), 0) };
+}
+
 function renderUsers() {
-  const search = (document.getElementById('userSearch').value || '').toLowerCase();
+  const searchEl = document.getElementById('userSearch');
+  if (!searchEl) return;
+  const search = (searchEl.value || '').toLowerCase();
+  const filter = document.getElementById('userFilter').value;
+  const me = auth.currentUser ? auth.currentUser.uid : null;
   const tbody = document.getElementById('userTable');
   tbody.innerHTML = '';
   allUsers
     .filter(u => (u.name || '').toLowerCase().includes(search) || (u.email || '').toLowerCase().includes(search))
+    .filter(u => {
+      const st = u.status || 'active';
+      if (filter === 'admin') return u.role === 'admin';
+      if (filter === 'user') return u.role !== 'admin';
+      if (filter === 'inactive') return st === 'inactive';
+      return true;
+    })
     .forEach(u => {
+      const st = u.status || 'active';
+      const s = orderStats(u.id);
       tbody.innerHTML += `<tr>
-        <td>${esc(u.name)}</td><td>${esc(u.email)}</td>
+        <td>${esc(u.name)}${u.id === me ? ' <small style="color:#888;">(you)</small>' : ''}</td>
+        <td>${esc(u.email)}</td>
         <td>
-          <select class="role-select" onchange="updateRole('${u.id}', this.value)">
-            <option value="user" ${u.role === 'user' ? 'selected' : ''}>user</option>
+          <select class="role-select" onchange="askChange('role', '${u.id}', this.value)">
+            <option value="user" ${u.role !== 'admin' ? 'selected' : ''}>user</option>
             <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>admin</option>
           </select>
         </td>
+        <td>
+          <select class="role-select" style="font-weight:bold;color:${st === 'inactive' ? '#e03131' : '#2b8a3e'};" onchange="askChange('status', '${u.id}', this.value)">
+            <option value="active" ${st === 'active' ? 'selected' : ''}>Active</option>
+            <option value="inactive" ${st === 'inactive' ? 'selected' : ''}>Inactive</option>
+          </select>
+        </td>
+        <td>${s.count}</td>
+        <td>₱${s.total.toFixed(2)}</td>
       </tr>`;
     });
 }
 
-function updateRole(userId, role) { db.collection('users').doc(userId).update({ role }); }
+// Role / status changes go through a confirmation popup
+function askChange(type, userId, newValue) {
+  const u = allUsers.find(x => x.id === userId);
+  if (!u) return;
+  if (auth.currentUser && auth.currentUser.uid === userId) {
+    alert("You can't change your own role or status.");
+    renderUsers();
+    return;
+  }
+  pendingChange = { type, userId, newValue };
+  const who = u.name || u.email;
+  let msg;
+  if (type === 'role') {
+    msg = newValue === 'admin'
+      ? `Make ${who} an admin? They will be able to log in to this dashboard.`
+      : `Change ${who} to a regular user? They will lose dashboard access.`;
+  } else {
+    msg = newValue === 'inactive'
+      ? `Set ${who} to inactive? They will no longer be able to use the app or the dashboard.`
+      : `Set ${who} to active again?`;
+  }
+  document.getElementById('changeMsg').innerText = msg;
+  document.getElementById('changeModal').classList.add('show');
+}
+
+function closeChangeModal(revert = true) {
+  pendingChange = null;
+  document.getElementById('changeModal').classList.remove('show');
+  if (revert) renderUsers();
+}
+
+async function confirmChange() {
+  const c = pendingChange;
+  closeChangeModal(false);
+  if (!c) return;
+  try {
+    await db.collection('users').doc(c.userId).update({ [c.type]: c.newValue });
+  } catch (err) {
+    alert('Update failed: ' + err.message);
+    renderUsers();
+  }
+}
 
 // Creates the login through a second hidden Firebase connection so the admin stays logged in
 async function addUser(e) {
@@ -299,7 +470,7 @@ async function addUser(e) {
     if (!secondaryApp) secondaryApp = firebase.initializeApp(firebaseConfig, 'Secondary');
     const secondaryAuth = secondaryApp.auth();
     const cred = await secondaryAuth.createUserWithEmailAndPassword(email, password);
-    await db.collection('users').doc(cred.user.uid).set({ name, email, role });
+    await db.collection('users').doc(cred.user.uid).set({ name, email, role, status: 'active' });
     await secondaryAuth.signOut();
     msg.style.color = '#2b8a3e';
     msg.innerText = 'User created. They can now log in with that email and password.';
@@ -309,3 +480,75 @@ async function addUser(e) {
     msg.innerText = err.message;
   }
 }
+
+// Page wording, extra popups, and the new Users page layout (built here so index.html stays the same)
+(function () {
+  const title = document.querySelector('#archiveModal .modal-box > p:nth-of-type(1)');
+  if (title) title.innerText = 'Delete this product?';
+  const note = document.querySelector('#archiveModal .modal-box > p:nth-of-type(2)');
+  if (note) note.innerText = 'It moves to the Archived tab and is removed from the shop in the mobile app (customers with it in their cart see "No longer available"). You can restore it, or delete it permanently from the Archived tab.';
+  const btn = document.querySelector('#archiveModal .confirm-btn');
+  if (btn) btn.innerText = 'Delete';
+  const tabNote = document.querySelector('#archivedView > p');
+  if (tabNote) tabNote.innerText = 'Deleted products wait here. They are removed from the shop in the mobile app. Restore brings them back, or delete them permanently.';
+
+  const fm = document.createElement('div');
+  fm.id = 'foreverModal';
+  fm.className = 'modal';
+  fm.innerHTML = `<div class="modal-box">
+    <p>Delete permanently?</p>
+    <img id="foreverImg" class="prod-thumb" style="width:60px;height:60px;margin:10px auto;display:block;">
+    <strong id="foreverName"></strong>
+    <p style="font-size:12px;color:#e03131;margin-top:10px;">This removes it for good and cannot be undone.</p>
+    <div class="modal-actions">
+      <button onclick="closeForeverModal()" class="cancel-btn">Cancel</button>
+      <button onclick="confirmForever()" class="confirm-btn" style="background:#e03131;">Delete permanently</button>
+    </div>
+  </div>`;
+  document.body.appendChild(fm);
+
+  const cm = document.createElement('div');
+  cm.id = 'changeModal';
+  cm.className = 'modal';
+  cm.innerHTML = `<div class="modal-box">
+    <p id="changeMsg"></p>
+    <div class="modal-actions">
+      <button onclick="closeChangeModal()" class="cancel-btn">Cancel</button>
+      <button onclick="confirmChange()" class="confirm-btn">Confirm</button>
+    </div>
+  </div>`;
+  document.body.appendChild(cm);
+
+  document.getElementById('users').innerHTML = `
+    <h2>Users</h2>
+    <div class="stats-row">
+      <div class="stat-card"><h4>Total Users</h4><span id="totalUsers">0</span></div>
+      <div class="stat-card"><h4>Admins</h4><span id="totalAdmins">0</span></div>
+      <div class="stat-card"><h4>Inactive</h4><span id="inactiveUsers">0</span></div>
+    </div>
+    <form id="addUserForm" onsubmit="addUser(event)">
+      <h4 style="margin:0 0 10px;color:#8E7CF0;">Add User</h4>
+      <input id="uName" placeholder="Name" required>
+      <input id="uEmail" type="email" placeholder="Email" required>
+      <input id="uPassword" type="password" placeholder="Password (min 6 characters)" minlength="6" required>
+      <select id="uRole" style="display:block;width:100%;margin-bottom:10px;padding:10px;border:1px solid #ddd;border-radius:8px;">
+        <option value="user">user</option>
+        <option value="admin">admin</option>
+      </select>
+      <button type="submit">Add User</button>
+      <p id="addUserMsg" style="margin:10px 0 0;font-size:13px;"></p>
+    </form>
+    <div class="filters">
+      <input id="userSearch" placeholder="Search by name or email..." oninput="renderUsers()">
+      <select id="userFilter" onchange="renderUsers()">
+        <option value="">All Users</option>
+        <option value="admin">Admins</option>
+        <option value="user">Customers</option>
+        <option value="inactive">Inactive</option>
+      </select>
+    </div>
+    <table>
+      <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Orders</th><th>Total Spent</th></tr></thead>
+      <tbody id="userTable"></tbody>
+    </table>`;
+})();
